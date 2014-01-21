@@ -39,6 +39,7 @@ import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.request.target.basic.RedirectRequestTarget;
 import org.eclipse.jgit.diff.DiffEntry.ChangeType;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -510,7 +511,18 @@ public abstract class RepositoryPage extends RootPage {
 	}
 
 	protected void addRefs(Repository r, RevCommit c) {
-		add(new RefsPanel("refsPanel", repositoryName, c, JGitUtils.getAllRefs(r, getRepositoryModel().showRemoteBranches)));
+		Map<ObjectId, List<RefModel>> refs = JGitUtils.getAllRefs(r, getRepositoryModel().showRemoteBranches);
+		Set<RefModel> containsRefs = JGitUtils.getTagsForCommit(r, c);
+		if (!containsRefs.isEmpty()) {
+		    if (!refs.containsKey(c.getId())) {
+		        refs.put(c.getId(), new ArrayList<RefModel>());
+		    }
+
+		    containsRefs.removeAll(refs.get(c.getId()));
+		    refs.get(c.getId()).addAll(containsRefs);
+		}
+
+		add(new RefsPanel("refsPanel", repositoryName, c, refs));
 	}
 
 	protected void addFullText(String wicketId, String text) {

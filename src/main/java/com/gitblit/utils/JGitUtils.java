@@ -24,10 +24,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.filefilter.TrueFileFilter;
@@ -63,6 +65,7 @@ import org.eclipse.jgit.revwalk.RevBlob;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevSort;
+import org.eclipse.jgit.revwalk.RevTag;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.filter.CommitTimeRevFilter;
@@ -1577,6 +1580,76 @@ public class JGitUtils {
 		}
 		return targets;
 	}
+
+    /**
+     * Returns all tags which contain the given commitgrouped by their associated object id.<br>
+     * Should mimic git tag --contains <commit>
+     *
+     * @param repository
+     * @return all refs grouped by their referenced object id
+    */
+    public static Set<RefModel> getTagsForCommit(final Repository repo, final RevCommit commit) {
+        final Set<RefModel> tags = new HashSet<RefModel>();
+        final RevWalk walk = new RevWalk(repo);
+        try {
+            for (final Ref ref : repo.getTags().values()) {
+                walk.reset();
+                final RevObject obj = walk.parseAny(ref.getObjectId());
+                final RevCommit tagCommit;
+                if (obj instanceof RevCommit) {
+                    tagCommit = (RevCommit) obj;
+                } else if (obj instanceof RevTag) {
+                    tagCommit = walk.parseCommit(((RevTag) obj).getObject());
+
+                } else {
+                    continue;
+                }
+
+                walk.reset();
+                if (commit.equals(tagCommit) || walk.isMergedInto(commit, tagCommit)
+                        || checkDescendant(commit, tagCommit)) {
+                    tags.add(new RefModel(ref.getName(), ref, tagCommit));
+                }
+            }
+        } catch (final IOException e) {
+            error(e, repo, "{0} failed to retrieve Tags for Commit {1}", commit);
+        }
+
+        return tags;
+    }
+
+    /**
+     * To check if desc is a descendant of asc.
+     *
+     * @param asc A RevCommit which is expected to be an Ascendant of desc.
+     * @param desc A RevCommit which is expected to be a Descendant of asc.
+     * @return true if desc is a descendant of asc, otherwise false.
+     */
+    public static boolean checkDescendant(RevCommit asc, RevCommit desc) {
+        if (asc == null || desc == null) {
+            return false;
+        }
+
+        if (asc.equals(desc)) {
+            return true;
+        }
+
+        if (desc.getParents() == null) {
+            return false;
+        }
+
+        for (RevCommit c : desc.getParents()) {
+            if (asc.equals(c)) {
+                return true;
+            }
+        }
+
+        for (RevCommit c : desc.getParents()) {
+            return checkDescendant(asc, c);
+        }
+
+        return false;
+    }
 
 	/**
 	 * Returns all refs grouped by their associated object id.
